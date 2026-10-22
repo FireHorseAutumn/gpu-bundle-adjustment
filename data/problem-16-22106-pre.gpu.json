@@ -1,0 +1,15 @@
+{
+  "file": "data/problem-16-22106-pre.txt.bz2",
+  "solver": "gba-gpu-lm",
+  "loss": "none",
+  "num_cameras": 16,
+  "num_points": 22106,
+  "num_observations": 83718,
+  "initial_cost": 4185659.5182497012,
+  "final_cost": 18033.903480853227,
+  "iterations": 9,
+  "total_time_s": 0.905772,
+  "per_iteration_s": 0.100641,
+  "termination": "CONVERGENCE",
+  "device": "NVIDIA GeForce RTX 5060 Laptop GPU"
+}

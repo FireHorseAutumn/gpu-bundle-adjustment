@@ -1,0 +1,12 @@
+{"precision":"e4m3","mode":"storage","scale":"none","overflow_events":127498,"nan_events":0,"err":{"median":255.99,"p90":311.831,"p99":336.476,"max":353.402},"gt_half":83718,"gt5":83698}
+{"precision":"e4m3","mode":"storage","scale":"auto","overflow_events":0,"nan_events":0,"err":{"median":23.8003,"p90":54.3558,"p99":88.0226,"max":145.228},"gt_half":83676,"gt5":79064}
+{"precision":"e4m3","mode":"arith","scale":"none","overflow_events":127504,"nan_events":0,"err":{"median":252.243,"p90":319.096,"p99":335.083,"max":394.518},"gt_half":83718,"gt5":83696}
+{"precision":"e4m3","mode":"arith","scale":"auto","overflow_events":129438,"nan_events":0,"err":{"median":252.835,"p90":318.844,"p99":336.075,"max":388.64},"gt_half":83718,"gt5":83707}
+{"precision":"e5m2","mode":"storage","scale":"none","overflow_events":0,"nan_events":0,"err":{"median":40.8959,"p90":93.0507,"p99":146.984,"max":327.56},"gt_half":83697,"gt5":81679}
+{"precision":"e5m2","mode":"storage","scale":"auto","overflow_events":0,"nan_events":0,"err":{"median":42.4816,"p90":96.0914,"p99":154.654,"max":246.547},"gt_half":83708,"gt5":81957}
+{"precision":"e5m2","mode":"arith","scale":"none","overflow_events":0,"nan_events":0,"err":{"median":65.0344,"p90":179.52,"p99":260.358,"max":499.545},"gt_half":83051,"gt5":78777}
+{"precision":"e5m2","mode":"arith","scale":"auto","overflow_events":0,"nan_events":0,"err":{"median":66.748,"p90":192.583,"p99":367.881,"max":753.897},"gt_half":82903,"gt5":78665}
+{"precision":"fp4e2m1","mode":"storage","scale":"none","overflow_events":472938,"nan_events":0,"err":{"median":7.40173,"p90":15.5937,"p99":34.0977,"max":61.7336},"gt_half":83553,"gt5":64278}
+{"precision":"fp4e2m1","mode":"storage","scale":"auto","overflow_events":0,"nan_events":0,"err":{"median":322.706,"p90":722.651,"p99":1042.96,"max":1491.04},"gt_half":83523,"gt5":83301}
+{"precision":"fp4e2m1","mode":"arith","scale":"none","overflow_events":651386,"nan_events":0,"err":{"median":6.78398,"p90":15.0297,"p99":34.9496,"max":63.7336},"gt_half":83239,"gt5":62944}
+{"precision":"fp4e2m1","mode":"arith","scale":"auto","overflow_events":425926,"nan_events":0,"err":{"median":7.28726,"p90":15.0411,"p99":33.2826,"max":63.7336},"gt_half":83034,"gt5":68722}

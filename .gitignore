@@ -1,0 +1,25 @@
+# --- Build ---
+build/
+*.o
+*.a
+*.so
+compile_commands.json
+.cache/
+
+# --- Editor / OS ---
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# --- Benchmark outputs (regenerate; keep tables in README instead) ---
+bench_*_results.json
+*.ceres.json
+
+# --- Downloaded datasets ---
+data/raw/
+data/**/*.bz2
+
+# --- Generated quantized problems (regenerate with tools/quantize_bal) ---
+data/quantized/*.txt
