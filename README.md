@@ -68,7 +68,8 @@ optimizer fits the quantization noise; the cost floor *is* the noise.
 Scaling fixes range only — relative error is scale-invariant, so per-tensor
 and per-channel (`auto9`) scales both fail identically. e5m2 (2 mantissa
 bits) is strictly worse than e4m3 despite the bigger range; fp4 e2m1
-(max 6.0, 8 values per octave) is coarser than the data itself.
+(1 mantissa bit: 2 grid values per octave, 7 positive values total,
+max 6.0) is coarser than the data itself.
 
 The boundary is mantissa bits vs the noise floor: fp16 (10 bits → ~0.2 px
 error at |pixel| ≈ 400) sits under the 7 px signal and survives; bf16
@@ -95,8 +96,8 @@ kernel; atomic accumulation into U/V/W blocks; Marquardt diagonal damping
 with Nielsen gain-ratio accept/reject; device anomaly counter for
 non-finite residuals/Jacobians and non-SPD V blocks), `tests/` (batched
 Cholesky vs Eigen; finite-difference Jacobian check; cost/iteration gates
-vs the Ceres oracle), `benchmarks/bench_bal.cpp` (same JSON schema as
-bench_ceres).
+vs the Ceres oracle; launch-boundary regression at P > 262144),
+`benchmarks/bench_bal.cpp` (same JSON schema as bench_ceres).
 
 v1 scope decision: the reduced camera system S is dense (9C x 9C) and
 solved on the host with Eigen LLT — fine at C=16/49. S assembly runs on

@@ -16,9 +16,13 @@
 // graph) + device-side solve — the assembly loop below is the exact place
 // to swap it in.
 //
-// Anomaly policy: non-finite residuals/Jacobians and non-SPD V blocks are
-// counted on device, never silently dropped. The counter is returned in
-// LMResult and asserted to be zero in tests.
+// Anomaly policy: a non-finite residual or Jacobian skips that edge's
+// accumulation (the edge contributes nothing) and increments device
+// counters[0]. The same counter covers non-finite trial-cost evaluations,
+// which additionally force step rejection. counters[0] is cumulative over
+// the solve, returned as LMResult.anomalies, and asserted zero in tests.
+// Non-SPD damped V blocks (counters[1]) are transient by design: the host
+// escalates lambda and retries; they are not part of LMResult.anomalies.
 
 #include <cuda_runtime.h>
 
@@ -276,20 +280,25 @@ __global__ void cost_kernel(const double* cams, const double* pts, const int* ob
     if (threadIdx.x == 0 && s_anom[0] > 0) atomicAdd(counters, s_anom[0]);
 }
 
-// V' = V + lambda * diag(V) per point block, inverted in place into Vinv.
+// V' = V + lambda * diag(V) per point block, inverted into Vinv.
 // Non-SPD blocks increment counters[1] (the host escalates lambda).
+// Grid-stride: grid_for caps the launch at 1024 blocks and P can exceed
+// 1024 * 256; a one-thread-per-point launch would leave the tail of Vinv
+// unwritten (stale/garbage inverses corrupt the Schur assembly — the
+// launch_bounds regression test plateaus at exactly the skipped share).
 __global__ void damp_invert_v_kernel(const double* V, double lambda, double* Vinv,
                                      int num_points, unsigned long long* counters) {
-    int p = blockIdx.x * blockDim.x + threadIdx.x;
-    if (p >= num_points) return;
-    const double* Vp = V + 9 * p;
-    double d0 = Vp[0] > 0.0 ? Vp[0] : 1e-12;
-    double d1 = Vp[4] > 0.0 ? Vp[4] : 1e-12;
-    double d2 = Vp[8] > 0.0 ? Vp[8] : 1e-12;
-    double A[9] = {Vp[0] + lambda * d0, Vp[3], Vp[6],
-                   Vp[3], Vp[4] + lambda * d1, Vp[7],
-                   Vp[6], Vp[7], Vp[8] + lambda * d2};
-    if (!dev::inverse3_spd(A, Vinv + 9 * p)) atomicAdd(&counters[1], 1ULL);
+    int stride = gridDim.x * blockDim.x;
+    for (int p = blockIdx.x * blockDim.x + threadIdx.x; p < num_points; p += stride) {
+        const double* Vp = V + 9 * p;
+        double d0 = Vp[0] > 0.0 ? Vp[0] : 1e-12;
+        double d1 = Vp[4] > 0.0 ? Vp[4] : 1e-12;
+        double d2 = Vp[8] > 0.0 ? Vp[8] : 1e-12;
+        double A[9] = {Vp[0] + lambda * d0, Vp[3], Vp[6],
+                       Vp[3], Vp[4] + lambda * d1, Vp[7],
+                       Vp[6], Vp[7], Vp[8] + lambda * d2};
+        if (!dev::inverse3_spd(A, Vinv + 9 * p)) atomicAdd(&counters[1], 1ULL);
+    }
 }
 
 struct DeviceProblem {

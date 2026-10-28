@@ -21,9 +21,10 @@ struct LMOptions {
 struct LMResult {
     double initial_cost = 0.0;
     double final_cost = 0.0;
-    int iterations = 0;             // outer iterations (incl. rejected steps)
+    int iterations = 0;             // accepted outer iterations (rejected trials uncounted)
     std::string termination;        // "CONVERGENCE" | "MAX_ITERATIONS" | "FAILURE"
-    unsigned long long anomalies = 0;  // device-side NaN/Inf counter
+    unsigned long long anomalies = 0;  // cumulative device non-finite edge count,
+                                       // rejected-trial evaluations included
     double total_time_s = 0.0;      // wall time of the solve itself
 };
 

@@ -69,7 +69,11 @@ target_link_libraries(test_schur PRIVATE gba)
 add_executable(test_vs_ceres tests/test_vs_ceres.cpp)
 target_link_libraries(test_vs_ceres PRIVATE gba_lm)
 
+add_executable(test_launch_bounds tests/test_launch_bounds.cpp)
+target_link_libraries(test_launch_bounds PRIVATE gba_lm)
+
 enable_testing()
 add_test(NAME schur COMMAND test_schur)
 add_test(NAME vs_ceres COMMAND test_vs_ceres
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME launch_bounds COMMAND test_launch_bounds)
