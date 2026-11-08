@@ -105,7 +105,8 @@ the host with per-thread privatized S copies (shared-S accumulation
 measured ~5x slower from cache-line ping-pong on the 9x9 block RMWs).
 Follow-ups, in order: sparse S (block CSR over the camera graph), S
 assembly on device, cuSOLVER potrf for the factorization. The dense-S
-path breaks down around C~400 (S = 100 MB, LLT ~1 s/iter).
+path was estimated to break around C~400; measured 2026-11-07, it already
+loses at C=257 (scaling table below).
 
 ### BAL table — honest win/loss (TODO 8)
 
@@ -141,15 +142,45 @@ GPU wins both. Caveats, honestly:
 - Phase breakdown is available via `bench_bal --verbose` (edge-accumulate
   / damp+Vinv / S assembly / LLT+backsub / trial cost).
 
-## Scaling status (2026-10-17)
+## Scaling table (2026-11-07): the win does not survive scale
 
-The table above covers only the original 16/49-camera datasets. A 257/356-camera
-scaling batch was attempted but machine contention made the timings unusable:
-Trafalgar completed 7/7 Ceres/GPU pairs, Dubrovnik 6/7, and the seventh GPU run
-was interrupted. **No timings from that batch are published.** A fresh
-interleaved rerun of all seven pairs per dataset on an idle machine is required
-before this table grows. Sparse block-CSR Schur is a follow-up candidate, not
-started work.
+Seven interleaved Ceres/GPU pairs per dataset, idle machine, governor and
+platform profile pinned to performance. Benchmarks confined to 15 physical
+cores (Ceres threads=30); the last core is quarantined for a busy-polling
+input daemon. Kernel 7.2.15, CUDA 13.2, FP64 throughout. Round 1 of each
+dataset caught post-boot OS housekeeping — kept in the range, disclosed,
+not deleted. Raw JSONs in `build/scale-runs/` (regenerable), summary in
+`data/scale_2026-11-07_summary.json`.
+
+| dataset | solver | final cost | iters | best s | median s | worst s |
+|---|---|---|---|---|---|---|
+| trafalgar problem-257 (257 cam / 65132 pt / 225911 obs) | Ceres SPARSE_SCHUR | 96656.0529 | 51 | 17.168 | 17.654 | 39.940* |
+| trafalgar problem-257 | gba-gpu-lm | 96519.6475 | 50 | 30.143 | 30.646 | 196.165* |
+| dubrovnik problem-356 (356 cam / 226730 pt / 1255268 obs) | Ceres SPARSE_SCHUR | 493930.9658 | 13 | 24.813 | 25.782 | 27.660 |
+| dubrovnik problem-356 | gba-gpu-lm | 490690.4308 | 22 | 70.564 | 71.735 | 238.302* |
+
+\* round 1 of 7, post-boot housekeeping. Rounds 2–7 span 17.17–18.53
+(Ceres 257), 30.14–31.67 (GPU 257), 24.81–27.66 (Ceres 356),
+70.56–73.56 (GPU 356).
+
+The GPU loses at scale: 1.74x slower than Ceres on Trafalgar, 2.78x on
+Dubrovnik (medians). The mechanism is the one the v1 scope note predicted:
+dense host-side S is 9C x 9C, and assembly plus LLT already dominate at
+C=257. The edge kernel is not the bottleneck. The CPU is.
+
+Two facts that keep this honest:
+
+- Every Trafalgar Ceres run hit the iteration cap (51 steps,
+  NO_CONVERGENCE), cost flat at 96656.0529, on a quiet machine. That is
+  Ceres solver behavior on this problem, not a measurement artifact.
+- The GPU solver reaches the lower final cost on both datasets
+  (96519.6 vs 96656.1; 490690.4 vs 493931.0). Its LM trajectory is
+  better; its host linear algebra is slower. The fix path is unchanged:
+  sparse block-CSR S, device assembly, cuSOLVER potrf.
+
+An earlier scaling attempt (2026-10-17) ran under machine contention.
+None of its numbers are published. The 16/49-camera table above stands
+as measured, with its powersave caveat.
 
 ## TODO (in order)
 1. [x] `data/fetch_bal.sh` — pull BAL datasets (`smoke` | dataset names | `all` | URL)

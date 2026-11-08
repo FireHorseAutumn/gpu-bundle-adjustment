@@ -1,0 +1,136 @@
+{
+  "date": "2026-11-07",
+  "machine": "Ryzen 9 8940HX + RTX 5060 Laptop (sm_120), CUDA 13.2, kernel 7.2.15, FP64",
+  "config": "governor+platform profile pinned performance; benchmarks on 15 physical cores (cpus 0-14,16-30), Ceres threads=30; cpu31 quarantined for a busy-polling input daemon; 7 interleaved pairs per dataset",
+  "round1_note": "round 1 of each dataset caught post-boot OS housekeeping; kept in range, disclosed",
+  "datasets": {
+    "problem-257-65132-pre": {
+      "ceres": {
+        "n": 7,
+        "best_s": 17.168396,
+        "median_s": 17.653815,
+        "worst_s": 39.940385,
+        "all_s": [
+          39.940385,
+          18.533558,
+          17.656935,
+          17.355986,
+          17.168396,
+          17.653815,
+          17.305041
+        ],
+        "iterations": [
+          51
+        ],
+        "termination": [
+          "NO_CONVERGENCE"
+        ],
+        "final_cost": 96656.05395794437,
+        "per_run_files": [
+          "problem-257-65132-pre.ceres.run1.json",
+          "problem-257-65132-pre.ceres.run2.json",
+          "problem-257-65132-pre.ceres.run3.json",
+          "problem-257-65132-pre.ceres.run4.json",
+          "problem-257-65132-pre.ceres.run5.json",
+          "problem-257-65132-pre.ceres.run6.json",
+          "problem-257-65132-pre.ceres.run7.json"
+        ]
+      },
+      "gpu": {
+        "n": 7,
+        "best_s": 30.142772,
+        "median_s": 30.645832,
+        "worst_s": 196.164527,
+        "all_s": [
+          196.164527,
+          31.670012,
+          30.661583,
+          30.509878,
+          30.142772,
+          30.645832,
+          30.269745
+        ],
+        "iterations": [
+          50
+        ],
+        "termination": [
+          "MAX_ITERATIONS"
+        ],
+        "final_cost": 96519.64746396922,
+        "per_run_files": [
+          "problem-257-65132-pre.gpu.run1.json",
+          "problem-257-65132-pre.gpu.run2.json",
+          "problem-257-65132-pre.gpu.run3.json",
+          "problem-257-65132-pre.gpu.run4.json",
+          "problem-257-65132-pre.gpu.run5.json",
+          "problem-257-65132-pre.gpu.run6.json",
+          "problem-257-65132-pre.gpu.run7.json"
+        ]
+      }
+    },
+    "problem-356-226730-pre": {
+      "ceres": {
+        "n": 7,
+        "best_s": 24.812811,
+        "median_s": 25.782001,
+        "worst_s": 27.660098,
+        "all_s": [
+          27.660098,
+          26.502572,
+          25.782001,
+          25.69161,
+          25.321705,
+          26.184721,
+          24.812811
+        ],
+        "iterations": [
+          13
+        ],
+        "termination": [
+          "CONVERGENCE"
+        ],
+        "final_cost": 493930.9657721483,
+        "per_run_files": [
+          "problem-356-226730-pre.ceres.run1.json",
+          "problem-356-226730-pre.ceres.run2.json",
+          "problem-356-226730-pre.ceres.run3.json",
+          "problem-356-226730-pre.ceres.run4.json",
+          "problem-356-226730-pre.ceres.run5.json",
+          "problem-356-226730-pre.ceres.run6.json",
+          "problem-356-226730-pre.ceres.run7.json"
+        ]
+      },
+      "gpu": {
+        "n": 7,
+        "best_s": 70.563638,
+        "median_s": 71.735463,
+        "worst_s": 238.302075,
+        "all_s": [
+          238.302075,
+          73.562468,
+          71.735463,
+          71.821373,
+          70.563638,
+          70.603359,
+          71.172175
+        ],
+        "iterations": [
+          22
+        ],
+        "termination": [
+          "CONVERGENCE"
+        ],
+        "final_cost": 490690.4306565873,
+        "per_run_files": [
+          "problem-356-226730-pre.gpu.run1.json",
+          "problem-356-226730-pre.gpu.run2.json",
+          "problem-356-226730-pre.gpu.run3.json",
+          "problem-356-226730-pre.gpu.run4.json",
+          "problem-356-226730-pre.gpu.run5.json",
+          "problem-356-226730-pre.gpu.run6.json",
+          "problem-356-226730-pre.gpu.run7.json"
+        ]
+      }
+    }
+  }
+}
