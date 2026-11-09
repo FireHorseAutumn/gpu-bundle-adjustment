@@ -1,197 +1,86 @@
-# gpu-bundle-adjustment (A3 — BAL-scale GPU BA)
+# gpu-bundle-adjustment
 
-MegBA-style GPU bundle adjustment: per-observation edge kernels, batched block
-Cholesky for camera blocks, fused reprojection GEMV + Huber epilogue. J is
-never materialized.
+GPU bundle adjustment at BAL scale. Per-observation edge kernels compute
+residuals and analytic Jacobians in FP64 and accumulate into U/V/W blocks
+with atomics; camera blocks invert with a batched 9x9 Cholesky written
+in-repo. J is never materialized. The reduced camera system S is dense
+(9C x 9C), assembled and factored on the host with Eigen LLT.
 
-## Claims
-- Edge-parallel Schur complement beats Ceres SPARSE_SCHUR on BAL-scale and
-  streaming/windowed problems.
-- Fused residual/J^T J accumulation wins by memory traffic alone.
+## Status
 
-## Kill criterion
-- If Ceres wins on BAL datasets at any size you test, publish the table. The
-  old pipeline's lesson: Ceres did 40k residuals in 0.26 s — algorithmic
-  improvement beats hardware. Do not benchmark against a 4-camera toy.
+- Vertical slice complete: BAL reader, Ceres SPARSE_SCHUR oracle, GPU LM
+  solver, benchmark harness, honest win/loss tables.
+- CTest 3/3: batched Cholesky vs Eigen, cost/iteration gates vs the
+  Ceres oracle, launch-boundary regression at P > 262144.
+- FP8/FP4 problem-data storage measured and rejected; fp16 storage
+  survives. Full study in `docs/RUNGS.md`.
+
+## Headline numbers
+
+vs Ceres SPARSE_SCHUR, same machine (RTX 5060 Laptop, FP64 throughout).
+Small problems: interleaved best-of-7, unpinned (powersave governor;
+absolute numbers move ~2x with CPU frequency state). Large problems:
+median of 7 interleaved pairs, governor + platform profile pinned.
+
+| dataset | cameras | Ceres s | gba-gpu-lm s | verdict |
+|---|---:|---:|---:|---|
+| problem-16 | 16 | 1.509 | 0.336 | GPU wins 4.5x (best) |
+| ladybug-49 | 49 | 1.777 | 0.780 | GPU wins 2.3x (best) |
+| trafalgar-257 | 257 | 17.654 | 30.646 | Ceres wins 1.74x (median) |
+| dubrovnik-356 | 356 | 25.782 | 71.735 | Ceres wins 2.78x (median) |
+
+The win is the edge kernel; the loss is host dense-S assembly + LLT,
+60 to 80% of solver time, dominant from C=257. The GPU reaches the lower
+final cost on both large problems: its LM trajectory is better, its host
+linear algebra is slower.
+
+## Honest losses
+
+- The GPU loses at scale: 1.74x on Trafalgar-257, 2.78x on
+  Dubrovnik-356, medians of 7 pinned pairs. The dense 9C x 9C host path
+  was estimated to break near C~400; measured, it already loses at
+  C=257.
+- Every Trafalgar Ceres run hit NO_CONVERGENCE at 51 iterations, cost
+  flat at 96656.0529, reproduced on a quiet machine: solver behavior,
+  not contention.
+- e4m3 problem-data storage lands at 245x the oracle final cost, e5m2
+  at 922x, fp4 e2m1 never converges. fp16 survives at +0.2 to 1.5%.
+- The small-problem table is unpinned; its medians (0.91 vs 2.23 on
+  problem-16, 1.66 vs 2.24 on ladybug-49) are much closer than its
+  bests.
+
+## Build and test
+
+```sh
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+ctest --test-dir build
+```
+
+No sibling repos; everything comes from public sources: CUDA toolkit,
+Eigen, Ceres, BAL. CMake prefers `g++-15` as the CUDA host compiler when
+the default g++ is too new for nvcc, and points Ceres's FindBLAS at the
+OpenBLAS runtime library when no BLAS dev package is installed.
+
+Data: `data/fetch_bal.sh` (`smoke` | dataset names | `all` | URL).
+Benchmarks: `build/bench_ceres` (oracle, JSON out) and `build/bench_bal`
+(same schema; `--verbose` prints the phase breakdown). Raw runs land in
+`data/`.
 
 ## Layout
-- `include/gba/` — problem definition, edge/camera types (headers)
-- `src/`         — Schur kernels (.cu), LM driver, BAL reader
-- `tests/`       — correctness vs Ceres on small BAL subsets
-- `benchmarks/`  — BAL leaderboard-style table; JSON out
-- `data/`        — BAL download script (public datasets)
 
-## Build
-No sibling repos; everything comes from public sources: CUDA toolkit, Eigen,
-Ceres, BAL.
-- The batched 9x9 Cholesky for the camera blocks lives in-repo (`schur.cuh`).
-- If the default g++ is newer than nvcc supports, CMake prefers `g++-15` as
-  the CUDA host compiler, falling back to `-allow-unsupported-compiler` with
-  `-std=c++20`.
-- If no BLAS dev package is installed, CMake points Ceres's FindBLAS at the
-  OpenBLAS runtime library directly.
+- `include/gba/bal_problem.hpp`: SoA problem definition, Snavely
+  residual.
+- `include/gba/schur.cuh`: batched 9x9 Cholesky factor/solve + 3x3 SPD
+  inverse; non-SPD fails loudly.
+- `src/lm.cu`, `include/gba/lm.hpp`: the LM driver: edge kernel,
+  Marquardt damping with Nielsen accept/reject, device anomaly counter.
+- `src/bal_reader.cpp`: BAL .txt/.bz2 reader.
+- `tools/`: `quantize_bal.cu` and `fp8_residual_probe.cu`, the
+  storage-precision study.
+- `tests/`, `benchmarks/`: gates and timing harnesses.
 
-## Precision experiment (2026-10-10): FP8/FP4 storage — DEAD, negative result
+## Deeper reading
 
-Question: can problem data live in FP8 (e4m3/e5m2) or FP4 (e2m1) — TRT-style,
-with per-tensor scale factors — while the optimizer runs in FP32/FP64?
-Tested at storage level only (quantize BAL inputs, run unmodified Ceres
-oracle); no GPU kernel was built.
-
-Method: `tools/quantize_bal.cu` (hardware-exact grids via CUDA 13.2
-`cuda_fp8.h`/`cuda_fp4.h` host conversions) + `tools/fp8_residual_probe.cu`
-(per-observation residual error vs the double reference, explicit
-overflow/NaN counting). Raw results: `data/quantized/results_*.jsonl`.
-
-Verdict: **gate failed by 2–3 orders of magnitude; do not build the GPU
-variant.**
-
-| dataset (oracle cost) | precision | scale | final cost | result |
-|---|---|---|---|---|
-| p16 (18033.9) | fp32 | — | 18033.90 | control ✓ |
-| p16 | fp16 | none | 18298.02 | SURVIVES (+1.5%, same 7 iters) |
-| p16 | bf16 | none | 36441.58 | converged, 2× cost (borderline) |
-| p16 | e4m3 | auto | 4,425,457 | converged to noise floor (245×) |
-| p16 | e5m2 | auto | 16,622,552 | converged to noise floor (922×) |
-| p16 | fp4 | any | — | NO_CONVERGENCE |
-| ladybug-49 (13344.3) | fp32 | — | 13344.32 | control ✓ |
-| ladybug-49 | fp16 | none | 13368.57 | SURVIVES (+0.2%, same 32 iters) |
-| ladybug-49 | bf16 | none | 14960.72 | converged, +12%, 43 iters |
-| ladybug-49 | e4m3 | auto | 367,630 | NO_CONVERGENCE (27×) |
-| ladybug-49 | e5m2 | auto | 1,376,951 | NO_CONVERGENCE (103×) |
-| ladybug-49 | fp4 | any | — | FAILURE (Ceres aborts) |
-
-Why it cannot work: BAL initial residuals are already ~7 px rms. e4m3 has a
-12.5% relative ulp, so at |pixel| ≈ 350 the quantization step is ~32 px —
-probe-measured median residual corruption 23.8 px (3.4× the signal). The
-optimizer fits the quantization noise; the cost floor *is* the noise.
-Scaling fixes range only — relative error is scale-invariant, so per-tensor
-and per-channel (`auto9`) scales both fail identically. e5m2 (2 mantissa
-bits) is strictly worse than e4m3 despite the bigger range; fp4 e2m1
-(1 mantissa bit: 2 grid values per octave, 7 positive values total,
-max 6.0) is coarser than the data itself.
-
-The boundary is mantissa bits vs the noise floor: fp16 (10 bits → ~0.2 px
-error at |pixel| ≈ 400) sits under the 7 px signal and survives; bf16
-(8 bits → ~1.5 px) grazes it and pays 1.1–2× cost; e4m3 (3 bits → ~24 px)
-exceeds it and collapses. The floor is absolute, set by pixel magnitudes —
-a from-scratch problem with larger initial residuals would stall at the
-same quantization floor after early progress.
-
-Consequence: FP8/FP4 storage is dead for BA, but **fp16 storage of
-problem data with fp32+ compute is viable** — halves memory traffic on the
-observation arrays (the dominant footprint) at ≤1.5% cost. Available as a
-kernel-level option when TODO 4–6 land, if bandwidth ever binds.
-
-The lesson rhymes with the archived TensorRT detector failure: reduced precision in
-measurement space silently relocates the objective's minimum. The GPU solver
-(TODO 4–6) proceeds in FP32/FP64.
-
-## GPU LM solver (2026-10-10): vertical slice landed, beats Ceres on both test datasets
-
-TODO 4–7 are done: `include/gba/schur.cuh` (batched 9x9 Cholesky
-factor/solve + 3x3 SPD inverse, one thread per block, non-SPD fails
-loudly), `src/lm.cu` (LM with per-observation analytic-Jacobian edge
-kernel; atomic accumulation into U/V/W blocks; Marquardt diagonal damping
-with Nielsen gain-ratio accept/reject; device anomaly counter for
-non-finite residuals/Jacobians and non-SPD V blocks), `tests/` (batched
-Cholesky vs Eigen; finite-difference Jacobian check; cost/iteration gates
-vs the Ceres oracle; launch-boundary regression at P > 262144),
-`benchmarks/bench_bal.cpp` (same JSON schema as bench_ceres).
-
-v1 scope decision: the reduced camera system S is dense (9C x 9C) and
-solved on the host with Eigen LLT — fine at C=16/49. S assembly runs on
-the host with per-thread privatized S copies (shared-S accumulation
-measured ~5x slower from cache-line ping-pong on the 9x9 block RMWs).
-Follow-ups, in order: sparse S (block CSR over the camera graph), S
-assembly on device, cuSOLVER potrf for the factorization. The dense-S
-path was estimated to break around C~400; measured 2026-11-07, it already
-loses at C=257 (scaling table below).
-
-### BAL table — honest win/loss (TODO 8)
-
-Interleaved best-of-7, same session, Ryzen 9 8940HX (32 threads,
-powersave governor — absolute numbers move ~2x with CPU frequency state)
-+ RTX 5060 Laptop (sm_120), CUDA 13.2, FP64 throughout:
-
-| dataset | solver | final cost | iters | total s | per-iter s |
-|---|---|---|---|---|---|
-| problem-16 (16 cam / 22106 pt / 83718 obs) | Ceres SPARSE_SCHUR | 18033.903510731627 | 7 | 1.509 | 0.216 |
-| problem-16 | gba-gpu-lm | 18033.903480853227 | 9 | 0.336 | 0.037 |
-| ladybug problem-49 (49 cam / 7776 pt / 31843 obs) | Ceres SPARSE_SCHUR | 13344.318399544838 | 32 | 1.616* | 0.050 |
-| ladybug problem-49 | gba-gpu-lm | 13344.269750634063 | 22 | 0.780 | 0.035 |
-
-\* ladybug Ceres best across 12 interleaved runs (2.246 median over the
-first 5; the 7-run round never beat 1.776 — the 1.616 came from the
-earlier 5-run round, same conditions).
-
-GPU wins both. Caveats, honestly:
-- The earlier-recorded Ceres oracle runs (committed JSONs) were faster —
-  0.552 s (p16) and 1.357 s (ladybug) — than anything reproducible in
-  this session (CPU frequency state). The GPU best still beats those
-  numbers on both datasets.
-- The win is the edge kernel, not the Schur solve: GPU residual+analytic
-  Jacobian+J^T J accumulation costs ~0.06 s per whole solve (vs Ceres's
-  autodiff residual evaluation dominating its timeline); host-side dense
-  S assembly + LLT is ~60–80% of the GPU solver's time. At these sizes
-  the total is small enough that the CPU-side Schur still wins the
-  overall race.
-- Medians are much closer than bests (p16: 0.91 vs 2.23; ladybug: 1.66
-  vs 2.24) — the GPU solver is more consistent because most of its work
-  is off the frequency-lottery CPU.
-- Phase breakdown is available via `bench_bal --verbose` (edge-accumulate
-  / damp+Vinv / S assembly / LLT+backsub / trial cost).
-
-## Scaling table (2026-11-07): the win does not survive scale
-
-Seven interleaved Ceres/GPU pairs per dataset, idle machine, governor and
-platform profile pinned to performance. Benchmarks confined to 15 physical
-cores (Ceres threads=30); the last core is quarantined for a busy-polling
-input daemon. Kernel 7.2.15, CUDA 13.2, FP64 throughout. Round 1 of each
-dataset caught post-boot OS housekeeping — kept in the range, disclosed,
-not deleted. Raw JSONs in `build/scale-runs/` (regenerable), summary in
-`data/scale_2026-11-07_summary.json`.
-
-| dataset | solver | final cost | iters | best s | median s | worst s |
-|---|---|---|---|---|---|---|
-| trafalgar problem-257 (257 cam / 65132 pt / 225911 obs) | Ceres SPARSE_SCHUR | 96656.0529 | 51 | 17.168 | 17.654 | 39.940* |
-| trafalgar problem-257 | gba-gpu-lm | 96519.6475 | 50 | 30.143 | 30.646 | 196.165* |
-| dubrovnik problem-356 (356 cam / 226730 pt / 1255268 obs) | Ceres SPARSE_SCHUR | 493930.9658 | 13 | 24.813 | 25.782 | 27.660 |
-| dubrovnik problem-356 | gba-gpu-lm | 490690.4308 | 22 | 70.564 | 71.735 | 238.302* |
-
-\* round 1 of 7, post-boot housekeeping. Rounds 2–7 span 17.17–18.53
-(Ceres 257), 30.14–31.67 (GPU 257), 24.81–27.66 (Ceres 356),
-70.56–73.56 (GPU 356).
-
-The GPU loses at scale: 1.74x slower than Ceres on Trafalgar, 2.78x on
-Dubrovnik (medians). The mechanism is the one the v1 scope note predicted:
-dense host-side S is 9C x 9C, and assembly plus LLT already dominate at
-C=257. The edge kernel is not the bottleneck. The CPU is.
-
-Two facts that keep this honest:
-
-- Every Trafalgar Ceres run hit the iteration cap (51 steps,
-  NO_CONVERGENCE), cost flat at 96656.0529, on a quiet machine. That is
-  Ceres solver behavior on this problem, not a measurement artifact.
-- The GPU solver reaches the lower final cost on both datasets
-  (96519.6 vs 96656.1; 490690.4 vs 493931.0). Its LM trajectory is
-  better; its host linear algebra is slower. The fix path is unchanged:
-  sparse block-CSR S, device assembly, cuSOLVER potrf.
-
-An earlier scaling attempt (2026-10-17) ran under machine contention.
-None of its numbers are published. The 16/49-camera table above stands
-as measured, with its powersave caveat.
-
-## TODO (in order)
-1. [x] `data/fetch_bal.sh` — pull BAL datasets (`smoke` | dataset names | `all` | URL)
-2. [x] `src/bal_reader.cpp` — load BAL (.txt or .bz2) into SoA (`include/gba/bal_problem.hpp`)
-3. [x] `benchmarks/bench_ceres.cpp` — Ceres SPARSE_SCHUR baseline + oracle:
-      cross-checks the reader's initial cost against Ceres (exit 2 on mismatch),
-      JSON out. Baseline uses all cores by default (`--threads` to override).
-4. [x] `include/gba/schur.cuh` — block-diagonal C inverse; 9x9 camera blocks,
-      batched Cholesky written in-repo
-5. [x] `src/lm.cu` — LM loop with GPU Schur
-6. [x] `tests/test_vs_ceres.cpp` — match Ceres cost on BAL subset
-      (bench_ceres already provides the oracle numbers)
-7. [x] `benchmarks/bench_bal.cpp` — full BAL table; JSON out
-8. [x] README: BAL table with honest win/loss per dataset
+- `docs/RUNGS.md`: the full record: the precision experiment, both BAL
+  tables with every caveat, the measured rejections, the fix path.
